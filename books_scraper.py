@@ -54,10 +54,11 @@ def parse_book_list_page(html: str) -> List[Book]:
         product_url = BASE_URL + product_url.lstrip("/")
 
         # Price
-        price_tag = art.select_one(".price_color")
+        div_price_tag = art.select_one(".product_price")
+        price_tag = div_price_tag.select_one("p")
         raw_price = price_tag.get_text(strip=True) if price_tag else "£0.00"
         try:
-            price_gbp = float(raw_price.replace("£", ""))
+            price_gbp = float(raw_price.replace("Â£", ""))
         except ValueError:
             price_gbp = 0.0
 
