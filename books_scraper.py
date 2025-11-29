@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 
+import argparse
 import requests
 from bs4 import BeautifulSoup
 
@@ -55,7 +56,6 @@ def parse_book_list_page(html: str) -> List[Book]:
         # Price
         price_tag = art.select_one(".price_color")
         raw_price = price_tag.get_text(strip=True) if price_tag else "£0.00"
-        # raw_price looks like "£51.77"
         try:
             price_gbp = float(raw_price.replace("£", ""))
         except ValueError:
@@ -71,7 +71,6 @@ def parse_book_list_page(html: str) -> List[Book]:
         rating = "Unknown"
         if rating_tag and rating_tag.has_attr("class"):
             classes = rating_tag["class"]
-            # classes example: ['star-rating', 'Three']
             for c in classes:
                 if c not in ("star-rating",):
                     rating = c
@@ -113,13 +112,23 @@ def find_next_page_url(html: str, current_url: str) -> Optional[str]:
         return f"{base}/{href}"
 
 
-def scrape_all_books(start_url: str = BASE_URL) -> List[Book]:
-    """Scrape all pages starting from start_url and return list of Book."""
+def scrape_all_books(
+    start_url: str = BASE_URL, max_pages: Optional[int] = None, delay: float = 1.0
+) -> List[Book]:
+    """Scrape all pages starting from start_url and return list of Book.
+
+    max_pages: if set, stop after this many pages.
+    delay: polite delay (in seconds) between page requests.
+    """
     all_books: List[Book] = []
     current_url = start_url
 
     page_num = 1
     while current_url:
+        if max_pages is not None and page_num > max_pages:
+            print(f"[INFO] Reached max_pages={max_pages}. Stopping.")
+            break
+
         print(f"[INFO] Fetching page {page_num}: {current_url}")
         html = fetch_page(current_url)
         if html is None:
@@ -138,8 +147,7 @@ def scrape_all_books(start_url: str = BASE_URL) -> List[Book]:
         current_url = next_url
         page_num += 1
 
-        # Be polite: small delay
-        time.sleep(1)
+        time.sleep(delay)
 
     return all_books
 
@@ -160,10 +168,40 @@ def save_books_to_csv(books: List[Book], filename: str = "books.csv") -> None:
     print(f"[INFO] Saved {len(books)} books to {filename}")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Scrape books from books.toscrape.com and export to CSV."
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="books.csv",
+        help="Output CSV filename (default: books.csv)",
+    )
+    parser.add_argument(
+        "-m",
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Maximum number of pages to scrape (default: all pages)",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="Delay (in seconds) between page requests (default: 1.0)",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     print("[START] Scraping books.toscrape.com")
-    books = scrape_all_books()
-    save_books_to_csv(books)
+    print(
+        f"[CONFIG] output={args.output}, max_pages={args.max_pages}, delay={args.delay}"
+    )
+    books = scrape_all_books(max_pages=args.max_pages, delay=args.delay)
+    save_books_to_csv(books, filename=args.output)
     print("[DONE]")
 
 
